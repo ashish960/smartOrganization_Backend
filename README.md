@@ -1,1 +1,1 @@
-# smartOrganization_Backend_PersonalPro
+# smartOrganization_Backend
