@@ -1,15 +1,20 @@
-const mongoose = require("mongoose");
+import mongoose from "mongoose";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const connectDB = async () => {
     try {
-        await mongoose.connect(process.env.MONGO_URI);
+        const mongoURI = process.env.MONGO_URI || "mongodb://localhost:27017/smartorg-ai";
 
-        console.log("MongoDB connected");
+        await mongoose.connect(mongoURI);
+
+        console.log(" MongoDB connected successfully");
+        return mongoose.connection;
     } catch (error) {
-        console.error("MongoDB connection failed", error);
-
+        console.error(" MongoDB connection failed:", error.message);
         process.exit(1);
     }
 };
 
-module.exports = connectDB;
+export default connectDB;

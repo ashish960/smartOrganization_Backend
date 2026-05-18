@@ -1,6 +1,5 @@
-const authService = require("../services/auth.service");
+import * as authService from "../services/auth.service.js";
 
-// REGISTER CONTROLLER
 const register = async (req, res) => {
     try {
         const result = await authService.registerUser(req.body);
@@ -16,7 +15,6 @@ const register = async (req, res) => {
     }
 };
 
-// LOGIN CONTROLLER
 const login = async (req, res) => {
     try {
         const result = await authService.loginUser(req.body);
@@ -32,7 +30,25 @@ const login = async (req, res) => {
     }
 };
 
-module.exports = {
-    register,
-    login,
+
+
+const getProfile = async (req, res) => {
+    try {
+        // req.user comes from middleware
+        const user = {
+            id: req.user.id,
+            email: req.user.email,
+        };
+
+        res.status(200).json({
+            success: true,
+            data: user,
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: error.message,
+        });
+    }
 };
+export { register, login, getProfile };
