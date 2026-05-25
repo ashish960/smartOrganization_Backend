@@ -3,6 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import indexRoutes from "./routes/index.js";
 import connectDB from "./config/db.js";
+import { seedDepartmentTemplates } from "./config/seedTemplates.js";
 
 dotenv.config();
 
@@ -10,10 +11,16 @@ const app = express();
 
 // Middleware
 app.use(express.json());
-app.use(cors());
+app.use(cors({
+    origin: process.env.CORS_ORIGIN || "http://localhost:3000",
+    credentials: true,
+}));
 
 // Database connection
 connectDB();
+
+// Seed department templates
+seedDepartmentTemplates();
 
 // Routes
 app.use("/api", indexRoutes);
