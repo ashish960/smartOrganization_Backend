@@ -7,57 +7,28 @@ import User from "../models/User.js";
 const createOrganization = async (userId, orgData) => {
     const { name, industry, size, website } = orgData;
 
-    // Create slug from name
-    const slug = name
-        .toLowerCase()
-        .replace(/[^a-z0-9]/g, "-")
-        .replace(/-+/g, "-");
-
-    // Check if slug exists
+    const slug = name.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-");
     const existingOrg = await Organization.findOne({ slug });
-    if (existingOrg) {
-        throw new Error("Organization name already taken");
-    }
+    if (existingOrg) throw new Error("Organization name already taken");
 
-    // Create organization
     const organization = await Organization.create({
-        name,
-        slug,
-        industry,
-        size,
-        website,
-        owner: userId,
-        members: [userId],
+        name, slug, industry, size, website,
+        owner: userId, members: [userId],
     });
 
-    // Find mandatory templates (HR)
-    const mandatoryTemplates = await DepartmentTemplate.find({
-        isMandatory: true,
-    });
-
-    // Auto create mandatory departments
+    const mandatoryTemplates = await DepartmentTemplate.find({ isMandatory: true });
     for (const template of mandatoryTemplates) {
         await Department.create({
-            name: template.name,
-            code: template.code,
-            icon: template.icon,
-            description: template.description,
-            organization: organization._id,
-            isFromTemplate: true,
-            templateRef: template._id,
-            isMandatory: true,
-            permissions: {
-                documentVisibility: template.defaultPermissions.documentVisibility,
-            },
+            name: template.name, code: template.code, icon: template.icon,
+            description: template.description, organization: organization._id,
+            isFromTemplate: true, templateRef: template._id, isMandatory: true,
+            permissions: { documentVisibility: template.defaultPermissions.documentVisibility },
             createdBy: userId,
         });
     }
 
-    // Update user with organization
     await User.findByIdAndUpdate(userId, {
-        organization: organization._id,
-        role: "ORG_ADMIN",
-        onboardingCompleted: false,
+        organization: organization._id, role: "ORG_ADMIN", onboardingCompleted: false,
     });
 
     return organization;
@@ -68,38 +39,44 @@ const getOrganization = async (orgId) => {
     const organization = await Organization.findById(orgId)
         .populate("owner", "name email")
         .populate("members", "name email role department");
-
-    if (!organization) {
-        throw new Error("Organization not found");
-    }
-
+    if (!organization) throw new Error("Organization not found");
     return organization;
 };
 
 // Update organization
 const updateOrganization = async (orgId, userId, updateData) => {
     const organization = await Organization.findById(orgId);
-
-    if (!organization) {
-        throw new Error("Organization not found");
-    }
-
-    // Only owner or admin can update
-    if (organization.owner.toString() !== userId) {
-        throw new Error("Not authorized to update organization");
-    }
-
-    const updated = await Organization.findByIdAndUpdate(
-        orgId,
-        { ...updateData },
-        { new: true }
-    );
-
-    return updated;
+    if (!organization) throw new Error("Organization not found");
+    if (organization.owner.toString() !== userId) throw new Error("Not authorized to update organization");
+    return await Organization.findByIdAndUpdate(orgId, { ...updateData }, { new: true });
 };
 
-export default {
-    createOrganization,
-    getOrganization,
-    updateOrganization,
+// Get all members with full details
+const getMembers = async (orgId) => {
+    const members = await User.find({ organization: orgId, isActive: true })
+        .select("name email role department jobTitle profileImage lastLogin createdAt isEmailVerified")
+        .populate("department", "name code icon");
+    return members;
 };
+
+// Remove member from org
+const removeMember = async (orgId, requesterId, targetUserId) => {
+    const org = await Organization.findById(orgId);
+    if (!org) throw new Error("Organization not found");
+
+    // Only owner can remove members
+    if (org.owner.toString() !== requesterId) throw new Error("Only the org owner can remove members");
+
+    // Can't remove the owner
+    if (org.owner.toString() === targetUserId) throw new Error("Cannot remove the organization owner");
+
+    // Remove from org members list
+    await Organization.findByIdAndUpdate(orgId, { $pull: { members: targetUserId } });
+
+    // Deactivate user
+    await User.findByIdAndUpdate(targetUserId, { isActive: false, organization: null, department: null });
+
+    return true;
+};
+
+export default { createOrganization, getOrganization, updateOrganization, getMembers, removeMember };

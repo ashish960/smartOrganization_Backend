@@ -9,5 +9,7 @@ router.use(authenticate);
 router.post("/create", organizationController.createOrganization);
 router.get("/me", organizationController.getMyOrganization);
 router.put("/update", organizationController.updateOrganization);
+router.get("/members", organizationController.getMembers);          // ← NEW
+router.delete("/members/:userId", organizationController.removeMember); // ← NEW
 
 export default router;
