@@ -17,68 +17,29 @@ const generateSlug = (companyName) => {
 };
 
 const registerUser = async ({ name, email, password, companyName, industry, companySize }) => {
-    console.log("i am inside register user");
-    // 1. Check if user already exists
     const existingUser = await User.findOne({ email });
-    if (existingUser) {
-        throw new Error("User already exists");
-    }
-    console.log("No existing user found, proceeding with registration");
-    // 2. Pre-generate a userId so we can satisfy org.owner (required) immediately
+    if (existingUser) throw new Error("User already exists");
+
     const userId = new mongoose.Types.ObjectId();
-
-    // 3. Create Organization — owner is required so pass userId upfront
     const slug = generateSlug(companyName);
-    console.log("Generated slug:", slug);
+
     const organization = await Organization.create({
-        name: companyName,
-        slug,
-        industry,
-        size: companySize,
-        plan: "STARTER",
-        billing: { status: "TRIAL" },
-        owner: userId,
-        members: [userId],
-        usage: { totalUsers: 1 },
+        name: companyName, slug, industry, size: companySize,
+        plan: "STARTER", billing: { status: "TRIAL" },
+        owner: userId, members: [userId], usage: { totalUsers: 1 },
     });
 
-    console.log("Organization created with ID:", organization._id);
-
-    // 4. Create User linked to the org
     const user = await User.create({
-        _id: userId,
-        name,
-        email,
-        password,                   // plain — pre-save hook on schema hashes it
-        role: "ORG_ADMIN",
-        organization: organization._id,
-        onboardingCompleted: false,
-    });
-    console.log("User created with ID:", user._id);
-
-    // 5. Generate JWT
-    const token = generateToken({
-        id: user._id,
-        role: user.role,
-        orgId: organization._id,
+        _id: userId, name, email, password,
+        role: "ORG_ADMIN", organization: organization._id, onboardingCompleted: false,
     });
 
-    console.log("Generated token:", token);
+    const token = generateToken({ id: user._id, role: user.role, orgId: organization._id });
 
     return {
         user: {
-            id: user._id,
-            name: user.name,
-            email: user.email,
-            role: user.role,
-            organization: {
-                id: organization._id,
-                name: organization.name,
-                slug: organization.slug,
-                industry: organization.industry,
-                size: organization.size,
-                plan: organization.plan,
-            },
+            id: user._id, name: user.name, email: user.email, role: user.role,
+            organization: { id: organization._id, name: organization.name, slug: organization.slug, industry: organization.industry, size: organization.size, plan: organization.plan },
             onboardingCompleted: user.onboardingCompleted,
         },
         token,
@@ -90,32 +51,71 @@ const loginUser = async ({ email, password }) => {
         .select("+password")
         .populate("organization", "name slug industry size plan billing onboardingCompleted");
 
-    if (!user) {
-        throw new Error("Invalid credentials");
-    }
+    if (!user) throw new Error("Invalid credentials");
 
     const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
-        throw new Error("Invalid credentials");
-    }
+    if (!isPasswordValid) throw new Error("Invalid credentials");
 
-    const token = generateToken({
-        id: user._id,
-        role: user.role,
-        orgId: user.organization?._id || null,
-    });
+    const token = generateToken({ id: user._id, role: user.role, orgId: user.organization?._id || null });
 
     return {
         user: {
-            id: user._id,
-            name: user.name,
-            email: user.email,
-            role: user.role,
-            organization: user.organization || null,
-            onboardingCompleted: user.onboardingCompleted,
+            id: user._id, name: user.name, email: user.email, role: user.role,
+            organization: user.organization || null, onboardingCompleted: user.onboardingCompleted,
         },
         token,
     };
 };
 
-export { registerUser, loginUser };
+// ── Add member directly (ORG_ADMIN only) ──────────────────────────────────
+// Creates a new user account under the same org — no invite email needed
+const addMember = async ({ orgId, name, email, role, jobTitle, departmentId, addedById }) => {
+
+    // 1. Check org exists
+    const org = await Organization.findById(orgId);
+    if (!org) throw new Error("Organization not found");
+
+    // 2. Check email not already taken
+    const existing = await User.findOne({ email });
+    if (existing) throw new Error("A user with this email already exists");
+
+    // 3. Create user with a temporary password — they should change it on first login
+    const tempPassword = `SmartOrg@${Math.random().toString(36).substring(2, 8)}`;
+
+    const user = await User.create({
+        name,
+        email,
+        password: tempPassword,          // pre-save hook hashes it
+        role: role || "USER",
+        organization: orgId,
+        department: departmentId || null,
+        jobTitle: jobTitle || null,
+        onboardingCompleted: false,
+        isEmailVerified: false,
+    });
+
+    // 4. Add to org members list + update usage
+    await Organization.findByIdAndUpdate(orgId, {
+        $push: { members: user._id },
+        $inc: { "usage.totalUsers": 1 },
+    });
+
+    // 5. If department specified, add to dept members
+    if (departmentId) {
+        const { default: Department } = await import("../models/Department.js");
+        await Department.findByIdAndUpdate(departmentId, {
+            $push: { members: user._id },
+        });
+        await User.findByIdAndUpdate(user._id, { department: departmentId });
+    }
+
+    return {
+        user: {
+            id: user._id, name: user.name, email: user.email,
+            role: user.role, jobTitle: user.jobTitle,
+        },
+        tempPassword, // return so admin can share with the new member
+    };
+};
+
+export { registerUser, loginUser, addMember };

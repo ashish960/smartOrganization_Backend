@@ -15,6 +15,19 @@ const getTemplates = async (req, res) => {
     }
 };
 
+const removeMember = async (req, res) => {
+    try {
+        const result = await departmentService.removeMember(
+            req.params.id,
+            req.user.organizationId,
+            req.params.userId
+        );
+        res.status(200).json({ success: true, data: result });
+    } catch (error) {
+        res.status(400).json({ success: false, message: error.message });
+    }
+};
+
 const createFromTemplate = async (req, res) => {
     try {
         const department = await departmentService.createFromTemplate(
@@ -140,4 +153,5 @@ export default {
     updateDepartment,
     addMember,
     updateAccessMatrix,
+    removeMember,
 };

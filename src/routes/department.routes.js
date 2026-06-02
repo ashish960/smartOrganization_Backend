@@ -14,5 +14,6 @@ router.get("/", departmentController.getDepartments);
 router.put("/:id", departmentController.updateDepartment);
 router.post("/:id/add-member", departmentController.addMember);
 router.put("/:id/access-matrix", departmentController.updateAccessMatrix);
+router.delete("/:id/remove-member/:userId", departmentController.removeMember);
 
 export default router;

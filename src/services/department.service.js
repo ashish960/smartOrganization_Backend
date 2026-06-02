@@ -102,29 +102,43 @@ const updateDepartment = async (deptId, orgId, updateData) => {
 
 // Add member to department
 const addMember = async (deptId, orgId, userId) => {
-    const department = await Department.findOne({
-        _id: deptId,
-        organization: orgId,
-    });
+    const department = await Department.findOne({ _id: deptId, organization: orgId });
+    if (!department) throw new Error("Department not found");
+    if (department.members.includes(userId)) throw new Error("User is already a member of this department");
 
-    if (!department) {
-        throw new Error("Department not found");
+    // Remove user from their previous department first
+    const user = await User.findById(userId);
+    if (user.department && user.department.toString() !== deptId) {
+        await Department.findByIdAndUpdate(user.department, {
+            $pull: { members: userId }
+        });
     }
 
-    // Check if already a member
-    if (department.members.includes(userId)) {
-        throw new Error("User is already a member");
-    }
-
+    // Add to new department
     department.members.push(userId);
     await department.save();
 
-    // Update user's department
-    await User.findByIdAndUpdate(userId, {
-        department: deptId,
-    });
+    // Update user's home department
+    await User.findByIdAndUpdate(userId, { department: deptId });
 
     return department;
+};
+
+const removeMember = async (deptId, orgId, userId) => {
+    const department = await Department.findOne({ _id: deptId, organization: orgId });
+    if (!department) throw new Error("Department not found");
+
+    if (!department.members.includes(userId)) throw new Error("User is not a member of this department");
+
+    // Remove from department members list
+    await Department.findByIdAndUpdate(deptId, {
+        $pull: { members: userId }
+    });
+
+    // Clear user's home department
+    await User.findByIdAndUpdate(userId, { department: null });
+
+    return { message: "Member removed successfully" };
 };
 
 // Update access matrix
@@ -151,5 +165,7 @@ export default {
     getDepartments,
     updateDepartment,
     addMember,
+    removeMember,
     updateAccessMatrix,
+
 };
