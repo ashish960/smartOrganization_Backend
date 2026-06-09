@@ -5,7 +5,7 @@ import path from "path";
 import Document from "../models/Document.js";
 import Organization from "../models/Organization.js";
 import Department from "../models/Department.js";
-
+import { processDocument } from "./ai.service.js";
 // ── Lazy S3 client ─────────────────────────────────────────────────────────
 let s3Instance = null;
 const getS3 = () => {
@@ -70,19 +70,42 @@ const uploadDocument = async ({ file, userId, orgId, departmentId, visibility, d
             organization: orgId,
             department: departmentId || null,
             visibility: visibility || "DEPARTMENT",
-            aiProcessingStatus: "PENDING",
+            aiProcessingStatus: "PENDING",  // starts as PENDING
         });
 
         await Organization.findByIdAndUpdate(orgId, {
             $inc: { "usage.totalDocuments": 1, "usage.storageUsed": file.size },
         });
 
+        // ── Trigger AI processing in background ──
+        // Don't await — user gets response immediately
+        processDocument({
+            documentId: document._id.toString(),
+            s3Url: url,
+            fileType: ext,
+            orgId: orgId.toString(),
+            departmentId: departmentId?.toString() || null,
+            visibility: visibility || "DEPARTMENT",
+        }).then(async () => {
+            // Processing succeeded → update status to COMPLETED
+            await Document.findByIdAndUpdate(document._id, {
+                aiProcessingStatus: "COMPLETED"
+            });
+            console.log(`✅ AI processing completed for document: ${document._id}`);
+        }).catch(async (err) => {
+            // Processing failed → update status to FAILED
+            await Document.findByIdAndUpdate(document._id, {
+                aiProcessingStatus: "FAILED"
+            });
+            console.error(`❌ AI processing failed for document: ${document._id}`, err.message);
+        });
+
         return document;
+
     } catch (error) {
         throw new Error(`Upload failed: ${error.message}`);
     }
 };
-
 // ── Get all documents for an org ───────────────────────────────────────────
 // Access rules:
 //   ORG_ADMIN    → sees everything in the org
