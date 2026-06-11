@@ -1,4 +1,5 @@
 import * as authService from "../services/auth.service.js";
+import { sendPasswordResetOTP, verifyOTP, resetPassword, changePassword } from "../services/otp.service.js";
 
 const register = async (req, res) => {
     try {
@@ -26,14 +27,11 @@ const getProfile = async (req, res) => {
     }
 };
 
-// POST /api/auth/add-member — ORG_ADMIN only
 const addMember = async (req, res) => {
     try {
-        // Only ORG_ADMIN can add members
         if (req.user.role !== "ORG_ADMIN") {
             return res.status(403).json({ success: false, message: "Only Org Admins can add members" });
         }
-
         const result = await authService.addMember({
             orgId: req.user.organizationId,
             addedById: req.user.id,
@@ -43,11 +41,60 @@ const addMember = async (req, res) => {
             jobTitle: req.body.jobTitle,
             departmentId: req.body.departmentId,
         });
-
         res.status(201).json({ success: true, data: result });
     } catch (error) {
         res.status(400).json({ success: false, message: error.message });
     }
 };
 
-export { register, login, getProfile, addMember };
+// POST /api/auth/forgot-password
+const forgotPassword = async (req, res) => {
+    try {
+        const { email } = req.body;
+        if (!email) return res.status(400).json({ success: false, message: "Email is required" });
+        const result = await sendPasswordResetOTP(email);
+        res.status(200).json({ success: true, data: result });
+    } catch (error) {
+        res.status(400).json({ success: false, message: error.message });
+    }
+};
+
+// POST /api/auth/verify-otp
+const verifyOTPController = async (req, res) => {
+    try {
+        const { email, otp } = req.body;
+        if (!email || !otp) return res.status(400).json({ success: false, message: "Email and OTP are required" });
+        const result = await verifyOTP(email, otp);
+        res.status(200).json({ success: true, data: result });
+    } catch (error) {
+        res.status(400).json({ success: false, message: error.message });
+    }
+};
+
+// POST /api/auth/reset-password
+const resetPasswordController = async (req, res) => {
+    try {
+        const { resetToken, newPassword } = req.body;
+        if (!resetToken || !newPassword) return res.status(400).json({ success: false, message: "Reset token and new password are required" });
+        if (newPassword.length < 8) return res.status(400).json({ success: false, message: "Password must be at least 8 characters" });
+        const result = await resetPassword(resetToken, newPassword);
+        res.status(200).json({ success: true, data: result });
+    } catch (error) {
+        res.status(400).json({ success: false, message: error.message });
+    }
+};
+
+// POST /api/auth/change-password (requires auth)
+const changePasswordController = async (req, res) => {
+    try {
+        const { currentPassword, newPassword } = req.body;
+        if (!currentPassword || !newPassword) return res.status(400).json({ success: false, message: "Both passwords are required" });
+        if (newPassword.length < 8) return res.status(400).json({ success: false, message: "New password must be at least 8 characters" });
+        const result = await changePassword(req.user.id, currentPassword, newPassword);
+        res.status(200).json({ success: true, data: result });
+    } catch (error) {
+        res.status(400).json({ success: false, message: error.message });
+    }
+};
+
+export { register, login, getProfile, addMember, forgotPassword, verifyOTPController, resetPasswordController, changePasswordController };
